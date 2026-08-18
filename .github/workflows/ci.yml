@@ -1,0 +1,35 @@
+# Local-target pipeline only (DuckDB) -- zero cloud dependency, so this always
+# runs regardless of AWS/Airbyte/Redshift infrastructure state. Validating the
+# redshift target here would need live Airbyte + AWS credentials as CI secrets
+# and a running Airbyte cluster, which is impractical and risky to wire into
+# automated CI for this project -- see PLAN.md's CI phase for the reasoning.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  local-pipeline:
+    name: Local pipeline (DuckDB, zero cloud dependency)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Load raw data (local target, no AWS)
+        run: python ingestion/local_loader/load_raw.py
+
+      - name: dbt build --target local
+        # `dbt build` runs models, seeds, snapshots, and tests together in DAG
+        # order -- no separate `dbt test` step needed after it.
+        run: dbt build --project-dir dbt --profiles-dir dbt --target local
