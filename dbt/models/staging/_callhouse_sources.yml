@@ -1,0 +1,43 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Landing tables — Ameyo call legs, Atlas dispositions/payments, the
+      Ameyo<->Atlas agent mapping, and FX rates. Populated either by
+      ingestion/local_loader (local target) or Airbyte (redshift target).
+      Untouched from source: raw is what arrived, not what we've cleaned.
+    schema: raw
+    tables:
+      - name: ameyo_outbound_calls
+        description: One row per Ameyo call leg dialled.
+        columns:
+          - name: ch_call_id
+            description: Natural key. Unique per call leg.
+            tests:
+              - unique
+              - not_null
+
+      - name: atlas_calls_dispositions
+        description: One row per call disposed of in Atlas against a customer contract.
+        columns:
+          - name: call_log_id
+            description: Primary key. The id agents are supposed to paste into Ameyo notes.
+            tests:
+              - unique
+              - not_null
+
+      - name: atlas_payments
+        description: One row per payment transaction per contract, local currency.
+
+      - name: atlas_ameyo_mapping
+        description: >
+          Bridges Ameyo's ameyo_user_id to Atlas's atlas_user_name. Contains
+          28 duplicate ameyo_user_id rows in the sample extract — resolved in
+          stg_atlas__agent_mapping, not here (raw stays a faithful mirror of
+          what arrived).
+
+      - name: fx_rates
+        description: >
+          Daily exchange rates to USD, fetched from an external API (see
+          ingestion/fx_rates/). Not part of the original four extracts.

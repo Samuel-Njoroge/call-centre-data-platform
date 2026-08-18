@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: dim_agent
+    description: One row per agent (ameyo_user_id), deduplicated in staging.
+    columns:
+      - name: ameyo_user_id
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_coding_rate
+    description: >
+      Metric 1. One row per (call_date, market, campaign, agent) -- call_date
+      is LOCAL calendar date. coding_rate = coded_calls / total_calls for
+      that combination.
+    columns:
+      - name: coding_rate
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+
+  - name: fct_paid_post_call
+    description: >
+      Metric 2. One row per assessable disposition (call_log_id). Null-
+      contract_id dispositions are excluded upstream, not counted as unpaid.
+      is_window_closed = false means the 3-day attribution window hasn't
+      elapsed yet as of the last refresh -- is_paid_post_call is provisional
+      for those rows, not a settled answer.
+    columns:
+      - name: call_log_id
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_inbound_call_drivers
+    description: >
+      Metric 4. One row per (call_date, market, level_one, level_two,
+      level_three) with a call count, for drill-down starting at level_one.
+      Population is call_type = 'Inbound Team' only.
+
+  - name: fct_value_recovered_usd
+    description: >
+      Metric 3. One row per (call_date, market) -- call_date is the payment
+      date. Converted using the most recently fetched FX rate, not the true
+      historical rate on the payment's date (see model file for why).
+    columns:
+      - name: value_recovered_usd
+        tests:
+          - not_null  # a null here means a payment's currency had no matching
+                       # fx_rates row -- silently dropping it would understate
+                       # the total, so this must fail loudly instead
