@@ -99,8 +99,9 @@ Full setup: [PROD DOCS](docs/PROD.md).
 **External FX-rate integration** - Metric 3 needs USD, and there's no rate in the source data, so
 `ingestion/fx_rates/fetch_fx.py` calls [exchangerate-api.com](https://www.exchangerate-api.com/) once
 per run and inserts the fetched rates into `raw.fx_rates` - a normal dbt source table, joined against
-`atlas_payments` in staging to convert every payment to USD. The three things the brief asks this
-integration to handle specifically:
+`atlas_payments` in staging to convert every payment to USD. 
+
+The API integration is designed to handle:
 
 - **Authentication** - the key is read from `EXCHANGERATE_API_KEY` (`.env`, gitignored), never
   committed to the repo.
@@ -164,8 +165,8 @@ Apache Superset, containerized, connected to **both** warehouses at once.
 
 **Why Apache Superset?**
 - Easy to build charts or run ad hoc SQL against either the local DuckDB file or production Redshift, same login.
-- Low cost or running in a production environment.
-- Wide range integration with other data services.
+- Low cost of running in a production environment.
+- Wide range integration ecosystem with other data services.
 
 **The Calls Centre Summary Dashboard**
 
@@ -247,9 +248,13 @@ dbt test --project-dir dbt --profiles-dir dbt --target local   # schema + singul
 finishes 23/23 (models + tests).
 
 **Dashboards, local target:** `.env` needs two more values beyond `EXCHANGERATE_API_KEY`:
-`SUPERSET_SECRET_KEY` (generate with `python -c "import secrets; print(secrets.token_hex(32))"`)
-and `SUPERSET_ADMIN_PASSWORD` (defaults to `admin`). Leave every `REDSHIFT_*`/`AIRBYTE_*`/`AWS_*`
-value blank - harmless for local-only use.
+`SUPERSET_SECRET_KEY` 
+
+generate with `python -c "import secrets; print(secrets.token_hex(32))"`)
+and `SUPERSET_ADMIN_PASSWORD` (defaults to `admin`).  
+
+Leave every `REDSHIFT_*`/`AIRBYTE_*`/`AWS_*`value blank - harmless for local-only use.
+
 ```bash
 docker compose up superset --build
 ```
@@ -277,13 +282,18 @@ DBT_TARGET=redshift docker compose up --build             # 3. Dagster + Superse
 ```
 
 Open **http://localhost:3000**, launch `callhouse_pipeline` the same way as the local path.
+
 **What you should see:** the same three-step run, taking noticeably longer on `load_raw_data`
 (Airbyte's connector pods take real time to start) and on `run_dbt_build` (a live warehouse over
-the network). Dashboards are already running - open **http://localhost:8088**, the **Production
-(Redshift)** connection is pre-configured, same login as the local path.
+the network). 
+
+Dashboards are already running - open **http://localhost:8088**
+
+The **Production (Redshift)** connection is pre-configured, same login as the local path.
 
 **A better way to run it:** `run.py` (repo root) wraps the abctl install + `docker compose up` into
 one idempotent command:
+
 ```bash
 python run.py up        # install/start everything
 python run.py down      # stop containers, keep the Airbyte cluster + Superset's saved dashboards
@@ -299,7 +309,7 @@ Check here: [PROD DOCS](docs/PROD.md).
 
 ## 9. Challenges
 
-A handful of the more interesting ones - the full list of data gaps and how each was handled is in
+A handful of the more interesting ones - the full list of data gaps and how I handled each is in
 [WRITEUP DOCS](docs/WRITEUP.md):
 
 - **Two systems with no shared key.** Ameyo and Atlas only link through a manually-pasted id with a
