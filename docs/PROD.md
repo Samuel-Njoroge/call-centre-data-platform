@@ -181,7 +181,13 @@ Already running from step 8 (`docker compose up` starts both services). Open
 
 Both the **Local (DuckDB)** and **Production (Redshift)** connections, and all five marts as
 datasets on each, are created automatically on container startup (`superset/bootstrap.py`) - nothing
-to configure by hand. Building charts/dashboards on top of them is a manual step in the UI.
+to configure by hand.
+
+The dashboard/charts below are also pre-loaded automatically, on a first-time startup only -
+`bootstrap.py` imports `superset/exports/dashboard_export.zip` the first time it finds no dashboard
+with that title, and skips the import on every later restart so it never overwrites edits made in
+the UI since. To ship an updated version of the dashboard, export it again from Superset
+(**Dashboards -> Export**) and overwrite that same ZIP.
 
 ![Charts](images/superset-charts.png)
 

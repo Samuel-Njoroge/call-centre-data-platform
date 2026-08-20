@@ -161,7 +161,10 @@ Full assumptions and the reasoning behind every modelling decision: [WRITEUP DOC
 
 ## 6. Visualization
 
-Apache Superset, containerized, connected to **both** warehouses at once.
+Apache Superset, containerized, connected to **both** warehouses at once. The dashboard below comes
+pre-loaded on a first-time `docker compose up` -- imported automatically from
+`superset/exports/dashboard_export.zip` -- so a reviewer sees it immediately rather than having to
+rebuild it by hand.
 
 **Why Apache Superset?**
 - Easy to build charts or run ad hoc SQL against either the local DuckDB file or production Redshift, same login.

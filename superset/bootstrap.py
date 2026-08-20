@@ -11,22 +11,39 @@ init` (needs the metadata schema and default roles to already exist).
 """
 
 import os
+import uuid
 
 from superset.app import create_app
 
 app = create_app()
 
+# Fixed UUIDs matching superset/exports/dashboard_export.zip's database/dataset
+# YAMLs -- so on a brand-new install, the objects created below are the exact
+# same objects the bundled dashboard import (further down) attaches its charts
+# to, rather than creating a second, duplicate copy. Only ever applied when an
+# object is created fresh; an already-existing object's uuid is never touched.
+LOCAL_DB_UUID = "05025255-d7fe-4d36-a5c7-f31acbb220be"
+DATASET_FIXED_UUIDS = {
+    "local_fct_coding_rate": "59598bcf-7bb4-43ba-add6-4fc4fdf14056",
+    "local_fct_paid_post_call": "f80612da-6049-483f-be3a-9b24efcc38d5",
+    "local_fct_value_recovered_usd": "5716d1fc-4274-4901-8001-437b74e8811f",
+    "local_fct_inbound_call_drivers": "21c45615-3a4b-4683-a2ca-1c70e6e41d5b",
+}
+
 with app.app_context():
     from superset import db
     from superset.models.core import Database
 
-    def upsert_database(name: str, uri: str) -> None:
+    def upsert_database(name: str, uri: str, fixed_uuid: str | None = None) -> None:
         existing = db.session.query(Database).filter_by(database_name=name).first()
         if existing:
             existing.sqlalchemy_uri = uri
             print(f"Updated existing database connection: {name}")
         else:
-            database = Database(database_name=name, sqlalchemy_uri=uri)
+            kwargs = {"database_name": name, "sqlalchemy_uri": uri}
+            if fixed_uuid:
+                kwargs["uuid"] = uuid.UUID(fixed_uuid)
+            database = Database(**kwargs)
             db.session.add(database)
             print(f"Created database connection: {name}")
         db.session.commit()
@@ -40,6 +57,7 @@ with app.app_context():
     upsert_database(
         "Local (DuckDB)",
         "duckdb:////workspace/warehouse_local.duckdb?access_mode=read_only",
+        fixed_uuid=LOCAL_DB_UUID,
     )
 
     # Production target: Redshift, superset_reader (read-only, all schemas -- see
@@ -97,11 +115,14 @@ with app.app_context():
             if existing:
                 print(f"Dataset already registered: {dataset_name}")
                 continue
-            dataset = SqlaTable(
-                table_name=dataset_name,
-                database=database,
-                sql=f"SELECT * FROM marts.{table_name}",
-            )
+            kwargs = {
+                "table_name": dataset_name,
+                "database": database,
+                "sql": f"SELECT * FROM marts.{table_name}",
+            }
+            if dataset_name in DATASET_FIXED_UUIDS:
+                kwargs["uuid"] = uuid.UUID(DATASET_FIXED_UUIDS[dataset_name])
+            dataset = SqlaTable(**kwargs)
             db.session.add(dataset)
             db.session.commit()
             try:
@@ -111,4 +132,34 @@ with app.app_context():
             except Exception as exc:
                 print(f"Registered dataset (metadata fetch failed, will lazy-load in UI): {dataset_name} -- {exc}")
 
-print("Datasets bootstrapped.")
+    print("Datasets bootstrapped.")
+
+    # Bundled dashboard/charts (superset/exports/dashboard_export.zip) -- imported
+    # once, only if a dashboard with this title doesn't already exist. This is what
+    # makes a first-time `docker compose up` come with the built dashboard already
+    # in place rather than an empty Superset instance someone has to rebuild by
+    # hand. Guarded by dashboard_title (not just "run once") so that an instance
+    # that already has this dashboard -- including one a reviewer has since
+    # customized -- is never touched by a later container restart re-running this
+    # script; only a genuinely fresh instance gets the import.
+    import subprocess
+
+    from superset.models.dashboard import Dashboard
+
+    DASHBOARD_TITLE = "d.light Call Centre Daily Effectiveness Dashboard"
+    EXPORT_PATH = "/workspace/superset/exports/dashboard_export.zip"
+
+    existing_dashboard = (
+        db.session.query(Dashboard).filter_by(dashboard_title=DASHBOARD_TITLE).first()
+    )
+    if existing_dashboard:
+        print(f"Dashboard already present: {DASHBOARD_TITLE!r} -- skipping bundled import.")
+    elif not os.path.exists(EXPORT_PATH):
+        print(f"No bundled dashboard export at {EXPORT_PATH} -- skipping.")
+    else:
+        print("Importing bundled dashboard (first run on this instance)...")
+        subprocess.run(
+            ["superset", "import-dashboards", "-p", EXPORT_PATH, "-u", "admin"],
+            check=True,
+        )
+        print("Dashboard imported.")
