@@ -157,6 +157,30 @@ One dbt project (`dbt/`), layered so the shape is the same on either warehouse:
 
 Full assumptions and the reasoning behind every modelling decision: [WRITEUP DOCS](docs/WRITEUP.md).
 
+#### Models Lineage
+
+**Marts**
+
+**1. dim_agent**: One row per agent 
+
+![](./docs/images/dim-agents.png)
+
+**2. fct_coding_rate**: One row per (call_date, market, campaign, agent)
+
+![](./docs/images/fct-coding-rate.png)
+
+**3. fct_inbound_call_drivers**: One row per (call_date, market, level_one level_two, level_three) combination with a call count
+
+![](./docs/images/fct-inbound-call-drivers.png)
+
+**4. fct_value_recovered_usd**: One row per (call_date, market) with the total attributed payment value converted to US
+
+![](./docs/images/fct-value-recovered-usd.png)
+
+**5. fct_paid_post_call**: One row per assessable disposition (call_log_id) 
+
+![](./docs/images/fct-paid-post-calls.png)
+
 ---
 
 ## 6. Visualization
