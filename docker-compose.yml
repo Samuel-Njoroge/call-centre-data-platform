@@ -9,11 +9,6 @@ services:
       - .:/workspace
     env_file:
       - .env
-    environment:
-      # DBT_TARGET is a run-mode selector, not a secret, so it isn't in .env --
-      # defaults to local (zero cloud dependency) unless set on the host shell
-      # before `docker compose up`, e.g. `DBT_TARGET=redshift docker compose up`.
-      - DBT_TARGET=${DBT_TARGET:-local}
 
   superset:
     build:
