@@ -14,6 +14,11 @@ services: Airbyte (via abctl, a Kubernetes cluster) and Dagster + Superset
                              Airbyte cluster. Asks for confirmation (skip with
                              --yes). Run `up` again afterward for a clean
                              slate.
+    python run.py pause     Freeze everything in place (docker stop/compose
+                             stop) to free RAM/CPU, without reinstalling or
+                             rebuilding anything on the way back.
+    python run.py resume    Bring a paused environment back. Fast -- unlike
+                             `up`, skips abctl's install/validation checks.
     python run.py status    Show what's currently running.
 
 Cross-platform (Linux/Mac/Windows) by construction: no shell=True subprocess
@@ -34,6 +39,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 TOOLS_DIR = REPO_ROOT / "tools"
 ABCTL_VERSION = "v0.30.4"
+AIRBYTE_CLUSTER_NAME = "airbyte-abctl"  # abctl's fixed default; never overridden here
 
 
 def _os_arch() -> tuple[str, str]:
@@ -152,6 +158,64 @@ def cmd_destroy(args: argparse.Namespace) -> None:
     print("\nEverything removed. Run `python run.py up` for a clean start.")
 
 
+def _airbyte_containers() -> list[str]:
+    """Docker containers belonging to the abctl-managed kind cluster, found by
+    kind's own label rather than a hardcoded container name (robust to naming
+    even though abctl's default is fixed today)."""
+    result = subprocess.run(
+        [
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            f"label=io.x-k8s.kind.cluster={AIRBYTE_CLUSTER_NAME}",
+            "--format",
+            "{{.Names}}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+    return [name for name in result.stdout.splitlines() if name]
+
+
+def cmd_pause(_args: argparse.Namespace) -> None:
+    print("=== Pausing Dagster + Superset (docker compose stop) ===")
+    subprocess.run(["docker", "compose", "stop"], check=True, cwd=REPO_ROOT)
+
+    containers = _airbyte_containers()
+    if containers:
+        print("\n=== Pausing Airbyte (docker stop) ===")
+        subprocess.run(["docker", "stop", *containers], check=True, cwd=REPO_ROOT)
+    else:
+        print("\nAirbyte not installed -- nothing to pause.")
+
+    print(
+        "\nEverything paused. Run `python run.py resume` to bring it back -- fast, "
+        "no reinstall or rebuild."
+    )
+
+
+def cmd_resume(_args: argparse.Namespace) -> None:
+    containers = _airbyte_containers()
+    if containers:
+        print("=== Resuming Airbyte (docker start) ===")
+        subprocess.run(["docker", "start", *containers], check=True, cwd=REPO_ROOT)
+    else:
+        print("Airbyte not installed -- run `python run.py up` first.")
+
+    print("\n=== Resuming Dagster + Superset (docker compose start) ===")
+    subprocess.run(["docker", "compose", "start"], check=True, cwd=REPO_ROOT)
+
+    print(
+        "\nEverything resumed:\n"
+        "  Airbyte:  http://localhost:8000\n"
+        "  Dagster:  http://localhost:3000\n"
+        "  Superset: http://localhost:8088\n"
+    )
+
+
 def cmd_status(_args: argparse.Namespace) -> None:
     print("=== Docker Compose services ===")
     subprocess.run(["docker", "compose", "ps"], cwd=REPO_ROOT)
@@ -190,6 +254,14 @@ def main() -> None:
         "-y", "--yes", action="store_true", help="Skip the confirmation prompt"
     )
     p_destroy.set_defaults(func=cmd_destroy)
+
+    p_pause = sub.add_parser(
+        "pause", help="Freeze everything in place (fast resume, no reinstall)"
+    )
+    p_pause.set_defaults(func=cmd_pause)
+
+    p_resume = sub.add_parser("resume", help="Bring a paused environment back")
+    p_resume.set_defaults(func=cmd_resume)
 
     p_status = sub.add_parser("status", help="Show what's currently running")
     p_status.set_defaults(func=cmd_status)

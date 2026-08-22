@@ -111,26 +111,41 @@ with app.app_context():
         database = db.session.query(Database).filter_by(database_name=db_name).one()
         for table_name in MART_TABLES:
             dataset_name = f"{prefix}_{table_name}"
-            existing = db.session.query(SqlaTable).filter_by(table_name=dataset_name).first()
-            if existing:
+            dataset = db.session.query(SqlaTable).filter_by(table_name=dataset_name).first()
+            is_new = dataset is None
+            if dataset:
                 print(f"Dataset already registered: {dataset_name}")
-                continue
-            kwargs = {
-                "table_name": dataset_name,
-                "database": database,
-                "sql": f"SELECT * FROM marts.{table_name}",
-            }
-            if dataset_name in DATASET_FIXED_UUIDS:
-                kwargs["uuid"] = uuid.UUID(DATASET_FIXED_UUIDS[dataset_name])
-            dataset = SqlaTable(**kwargs)
-            db.session.add(dataset)
-            db.session.commit()
-            try:
-                dataset.fetch_metadata()
+            else:
+                kwargs = {
+                    "table_name": dataset_name,
+                    "database": database,
+                    "sql": f"SELECT * FROM marts.{table_name}",
+                }
+                if dataset_name in DATASET_FIXED_UUIDS:
+                    kwargs["uuid"] = uuid.UUID(DATASET_FIXED_UUIDS[dataset_name])
+                dataset = SqlaTable(**kwargs)
+                db.session.add(dataset)
                 db.session.commit()
-                print(f"Registered dataset: {dataset_name}")
-            except Exception as exc:
-                print(f"Registered dataset (metadata fetch failed, will lazy-load in UI): {dataset_name} -- {exc}")
+                print(f"Created dataset: {dataset_name}")
+
+            # Local (DuckDB, a file on disk) is always (re)synced on every startup, not
+            # just on creation -- self-heals a dataset whose columns were never
+            # populated because marts.* didn't exist yet the first time this ran (dbt
+            # hadn't built), which the old create-only fetch left permanently stale
+            # until someone fixed it by hand. Redshift keeps the original creation-only
+            # fetch instead -- unlike DuckDB this is a real network call, and while
+            # Redshift is unreachable (no prod creds yet) each attempt blocks on a
+            # ~110s TCP timeout; retrying all 5 on every container restart would add
+            # ~9 minutes to every restart for no benefit until Redshift is actually
+            # configured. Not a silent gap either way: an unsynced dataset still
+            # lazy-loads its columns in the UI same as it always could.
+            if prefix == "local" or is_new:
+                try:
+                    dataset.fetch_metadata()
+                    db.session.commit()
+                    print(f"Synced columns: {dataset_name}")
+                except Exception as exc:
+                    print(f"Columns not synced (will lazy-load in UI): {dataset_name} -- {exc}")
 
     print("Datasets bootstrapped.")
 

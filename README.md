@@ -305,10 +305,12 @@ cp .env.example .env
 #   configure the S3 source + Redshift destination connectors + connection here --
 #   full walkthrough with screenshots: docs/PROD.md
 python ingestion/s3_upload/upload_to_s3.py               # 2. land data/raw/ in S3
-DBT_TARGET=redshift docker compose up --build             # 3. Dagster + Superset, targeting Redshift
+docker compose up --build                                 # 3. Dagster + Superset
 ```
 
-Open **http://localhost:3000**, launch `callhouse_pipeline` the same way as the local path.
+Open **http://localhost:3000** and launch `callhouse_pipeline`, but in the Launchpad's run config set
+`resources.target_resource.config.target` to `redshift` (defaults to `local`) -- target is a per-run
+choice now, not an env var, so the same running container serves both pipelines.
 
 **What you should see:** the same three-step run, taking noticeably longer on `load_raw_data`
 (Airbyte's connector pods take real time to start) and on `run_dbt_build` (a live warehouse over
