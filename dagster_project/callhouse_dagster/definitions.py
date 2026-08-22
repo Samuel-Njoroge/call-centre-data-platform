@@ -15,12 +15,13 @@ runtime, not hardcoded, so the same relative repo layout resolves correctly
 either way.
 """
 
-import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 from dagster import (
+    ConfigurableResource,
     Definitions,
     In,
     Nothing,
@@ -31,6 +32,14 @@ from dagster import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DBT_PROJECT_DIR = REPO_ROOT / "dbt"
+
+
+class TargetResource(ConfigurableResource):
+    """Picks local (DuckDB) vs redshift per run, from the Launchpad's run config --
+    not a container-level env var, so switching pipelines no longer needs a
+    container restart, just a different choice at launch time."""
+
+    target: Literal["local", "redshift"] = "local"
 
 
 def _add_ingestion_path(subdir: str) -> None:
@@ -51,8 +60,8 @@ def _add_ingestion_path(subdir: str) -> None:
 
 
 @op
-def load_raw_data(context) -> None:
-    target = os.environ.get("DBT_TARGET", "local")
+def load_raw_data(context, target_resource: TargetResource) -> None:
+    target = target_resource.target
     if target == "local":
         _add_ingestion_path("local_loader")
         from load_raw import load
@@ -77,12 +86,12 @@ def load_raw_data(context) -> None:
 
 
 @op(ins={"start_after": In(Nothing)})
-def load_fx_rates(context) -> None:
+def load_fx_rates(context, target_resource: TargetResource) -> None:
     _add_ingestion_path("fx_rates")
     from fetch_fx import fetch_rates_from_api, upsert_duckdb
 
     rates = fetch_rates_from_api()
-    target = os.environ.get("DBT_TARGET", "local")
+    target = target_resource.target
     if target == "local":
         upsert_duckdb(rates, str(REPO_ROOT / "warehouse_local.duckdb"))
     else:
@@ -93,8 +102,8 @@ def load_fx_rates(context) -> None:
 
 
 @op(ins={"start_after": In(Nothing)})
-def run_dbt_build(context) -> None:
-    target = os.environ.get("DBT_TARGET", "local")
+def run_dbt_build(context, target_resource: TargetResource) -> None:
+    target = target_resource.target
     result = subprocess.run(
         [
             "dbt",
@@ -118,14 +127,12 @@ def run_dbt_build(context) -> None:
 
 @job(
     tags={
-        # Cosmetic only -- shown as chips next to the run ID in the Runs list so a run
-        # is identifiable at a glance, without splitting this into separate jobs (which
-        # would need its own schedule/sensor chaining to keep "transform waits for
-        # load" true, undoing the sequencing fixes above). Read once at job-definition
-        # time, which is accurate for how this is actually run: DBT_TARGET is set on
-        # the `dagster dev` process's own environment, not overridden per run, so it's
-        # already fixed for the lifetime of that process.
-        "target": os.environ.get("DBT_TARGET", "local"),
+        # Cosmetic only -- shown as a chip next to the run ID in the Runs list, without
+        # splitting this into separate jobs (which would need its own schedule/sensor
+        # chaining to keep "transform waits for load" true, undoing the sequencing
+        # fixes above). No "target" tag here -- unlike the old env-var approach, target
+        # is now a per-run choice (TargetResource, set in the Launchpad), not something
+        # fixed at job-definition time.
         "stages": "raw_ingestion+fx_rates+dbt_build",
     },
 )
@@ -145,9 +152,11 @@ def callhouse_pipeline() -> None:
 callhouse_daily_schedule = ScheduleDefinition(
     job=callhouse_pipeline,
     cron_schedule="0 6 * * *",  # every morning, 06:00
+    run_config={"resources": {"target_resource": {"config": {"target": "redshift"}}}},
 )
 
 defs = Definitions(
     jobs=[callhouse_pipeline],
     schedules=[callhouse_daily_schedule],
+    resources={"target_resource": TargetResource()},
 )
