@@ -10,34 +10,164 @@ sources:
     schema: raw
     tables:
       - name: ameyo_outbound_calls
-        description: One row per Ameyo call leg dialled.
+        description: >
+          Outbound calls placed by agents, one row per call leg. Timestamps
+          are in the local time of the contact centre's country, per the
+          case study brief.
         columns:
           - name: ch_call_id
-            description: Natural key. Unique per call leg.
+            description: >
+              Unique identifier of the call leg in Ameyo, e.g.
+              d224-6a313fe9-vcall-4149452. Treat as the natural key of this
+              dataset.
             tests:
               - unique
               - not_null
+          - name: ch_date_added
+            description: >
+              When the call was placed, in the LOCAL time of the contact
+              centre country — the only local-time field in any of the four
+              extracts; everything else is UTC.
+          - name: ch_contact_center_id
+            description: >
+              Country of the contact centre. 1 = Kenya, 2 = Uganda,
+              3 = Tanzania, 4 = Nigeria. A different coding scheme from
+              Atlas's tenant_id.
+          - name: ch_system_disposition
+            description: >
+              The telephony system's own outcome for the call leg, e.g.
+              CONNECTED. This is the switch's view, not the agent's, and is
+              not the same thing as an Atlas disposition.
+          - name: ch_call_type
+            description: >
+              How the call was placed: outbound.manual.dial,
+              outbound.auto.dial, click.to.call.dial.
+          - name: total_talk_time
+            description: Talk duration in milliseconds.
+          - name: udh_user_id
+            description: >
+              The Ameyo login of the agent who made the call, e.g.
+              Stanley.Omondi. Joins to atlas_ameyo_mapping.
+          - name: campaign_name
+            description: >
+              The campaign the call belongs to, e.g. KYC Kenya, The
+              Invincibles, Upsell Campaign, CallBacks, Elite.
+          - name: udh_notes
+            description: >
+              Free-text field where the agent is supposed to paste the
+              Atlas call_log_id after disposing the call — the only thread
+              connecting a dialled call to its business outcome, and it
+              depends entirely on the agent remembering to do it. 53% blank
+              in this sample.
 
       - name: atlas_calls_dispositions
-        description: One row per call disposed of in Atlas against a customer contract.
+        description: >
+          One row per call disposed of in Atlas against a customer
+          contract. Timestamps are UTC.
         columns:
           - name: call_log_id
-            description: Primary key. The id agents are supposed to paste into Ameyo notes.
+            description: >
+              Primary key of the disposition in Atlas. This is the id
+              agents are supposed to paste into the Ameyo notes field.
             tests:
               - unique
               - not_null
+          - name: tenant_id
+            description: >
+              Market. 1001 = Kenya, 1002 = Uganda, 1003 = Tanzania,
+              1004 = Nigeria. A different coding scheme from Ameyo's
+              ch_contact_center_id.
+          - name: customer_id
+            description: The customer. One customer may hold several contracts.
+          - name: contract_id
+            description: >
+              The contract the call relates to. This is the grain at which
+              payments are recorded. Null on 12.1% of rows in this sample —
+              those dispositions can't be assessed for payment attribution
+              at all.
+          - name: created_timestamp_utc
+            description: When the disposition was created in Atlas, in UTC.
+          - name: createdby
+            description: The Atlas user who logged the disposition.
+          - name: call_type
+            description: >
+              The team or channel handling the call — not a direction flag.
+              Documented values: Phone Call, Inbound Team, Outbound Team,
+              Onboarding Team, Upsell Team, Aftersales Team, Voice of
+              Customer. The actual data also contains undocumented values
+              (On Site Visit, Welcome Team). Phone Call is 59% of all
+              dispositions and carries no directionality signal — see
+              docs/WRITEUP.md and int_dispositions_hierarchy's docs.
+          - name: level_one
+            description: >
+              First level of the disposition hierarchy, e.g. Financial
+              Constraint, Customer Paid, Reachable, Enquiry, Didn't go
+              through.
+          - name: level_two
+            description: >
+              Second level, e.g. Promised To Pay, Economic Hardships,
+              Product Usage/Education. Not always populated.
+          - name: level_three
+            description: >
+              Third level, e.g. Promise to Pay, Troubleshooting steps
+              guide. Populated less often still.
 
       - name: atlas_payments
-        description: One row per payment transaction per contract, local currency.
+        description: >
+          One row per payment transaction per contract, local currency.
+          Timestamps are UTC.
+        columns:
+          - name: pay_timestamp_utc
+            description: When the payment was recorded, in UTC.
+          - name: tenant_id
+            description: Market, same coding as atlas_calls_dispositions.tenant_id.
+          - name: contract_id
+            description: The contract the payment was made against.
+          - name: payment_request_provider
+            description: >
+              The mobile money or payment provider, e.g. MPESA, MTN Uganda,
+              Airtel Tanzania, PAGA Nigeria, Monnify Nigeria. Also contains
+              514 non-provider values (MANUAL, UNKNOWN, LOYALTY_DISCOUNT) —
+              see stg_atlas__payments' docs.
+          - name: create_program
+            description: >
+              The internal service that ingested the payment, e.g.
+              paymentsintegrationservicempesake.
+          - name: amount
+            description: Payment amount in the LOCAL currency of the market — KES, UGX, TZS or NGN.
 
       - name: atlas_ameyo_mapping
         description: >
-          Bridges Ameyo's ameyo_user_id to Atlas's atlas_user_name. Contains
-          28 duplicate ameyo_user_id rows in the sample extract — resolved in
-          stg_atlas__agent_mapping, not here (raw stays a faithful mirror of
-          what arrived).
+          Bridges Ameyo's ameyo_user_id to Atlas's atlas_user_name — there
+          is no shared user key between the two systems otherwise. Contains
+          28 duplicate ameyo_user_id rows in the sample extract, resolved
+          in stg_atlas__agent_mapping, not here (raw stays a faithful
+          mirror of what arrived).
+        columns:
+          - name: contact_centre
+            description: "Country name: Kenya, Uganda, Tanzania, Nigeria."
+          - name: ameyo_user_id
+            description: The agent's Ameyo user_id.
+          - name: team
+            description: >
+              The team the agent sits in, e.g. Attrition, Onboarding Team,
+              Upsell, Blended, Quality Analyst.
+          - name: atlas_user_name
+            description: The agent's identity in Atlas.
 
       - name: fx_rates
         description: >
           Daily exchange rates to USD, fetched from an external API (see
-          ingestion/fx_rates/). Not part of the original four extracts.
+          ingestion/fx_rates/). Not part of the original four case-study
+          extracts.
+        columns:
+          - name: rate_date
+            description: The date this rate was fetched for.
+          - name: currency
+            description: ISO-ish currency code — KES, UGX, TZS or NGN.
+          - name: local_units_per_usd
+            description: >
+              How many units of this currency equal 1 USD, i.e.
+              amount_local / local_units_per_usd = USD.
+          - name: fetched_at
+            description: When this row was actually fetched from the API (UTC).

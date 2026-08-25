@@ -1,0 +1,91 @@
+version: 2
+
+models:
+  - name: int_calls_coded
+    description: '{{ doc("int_calls_coded") }}'
+    columns:
+      - name: call_id
+        description: Natural key of the Ameyo call leg. Unique per row.
+        tests:
+          - unique
+          - not_null
+      - name: called_at_local
+        description: When the call was placed, local time of the contact centre.
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria.
+      - name: call_type
+        description: How the call was placed (Ameyo's own dialer-mode field).
+      - name: talk_time_ms
+        description: Talk duration in milliseconds.
+      - name: ameyo_user_id
+        description: The Ameyo login of the agent who made the call.
+      - name: campaign_name
+        description: The campaign the call belongs to.
+      - name: call_notes_raw
+        description: Free-text notes field as staged (trimmed, blank-nulled).
+      - name: candidate_call_log_id
+        description: >
+          The digits-only value extracted from call_notes_raw, cast to
+          bigint — null if the notes weren't a plausible pasted id at all.
+          See this model's description for the exact matching rule.
+      - name: matched_call_log_id
+        description: >
+          The Atlas call_log_id this call actually matched to, if any —
+          null when candidate_call_log_id didn't match a real disposition
+          (or was null itself).
+      - name: matched_contract_id
+        description: contract_id of the matched disposition, if matched_call_log_id is not null.
+      - name: matched_disposed_at_utc
+        description: disposed_at_utc of the matched disposition, if matched_call_log_id is not null.
+      - name: is_coded
+        description: True when matched_call_log_id is not null — this call is "coded" per Metric 1's definition.
+
+  - name: int_calls_payment_attribution
+    description: '{{ doc("int_calls_payment_attribution") }}'
+    columns:
+      - name: attribution_id
+        description: Surrogate key on (call_log_id, pay_timestamp_utc, amount_local).
+        tests:
+          - unique
+          - not_null
+      - name: call_log_id
+        description: The disposition this row is about. Not unique on its own -- a call attributed more than one payment appears once per payment.
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria.
+      - name: contract_id
+        description: The contract this disposition relates to. Always non-null in this model -- null-contract dispositions are filtered upstream.
+      - name: disposed_at_utc
+        description: When this disposition was created in Atlas, UTC.
+      - name: window_closes_at_utc
+        description: disposed_at_utc + 3 days -- when this call's attribution window fully closes.
+      - name: is_window_closed
+        description: >
+          False if window_closes_at_utc hasn't passed yet as of this run --
+          see this model's description for the moving-window handling.
+      - name: pay_timestamp_utc
+        description: When the attributed payment was recorded, UTC. Null if no payment was attributed to this disposition.
+      - name: currency
+        description: Local currency of the attributed payment, if any.
+      - name: amount_local
+        description: Amount of the attributed payment in local currency, if any.
+      - name: is_paid_post_call
+        description: True when this disposition has an attributed payment (pay_timestamp_utc is not null).
+
+  - name: int_dispositions_hierarchy
+    description: '{{ doc("int_dispositions_hierarchy") }}'
+    columns:
+      - name: call_log_id
+        description: The disposition this row is about. Unique per row.
+        tests:
+          - unique
+          - not_null
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria.
+      - name: disposed_at_utc
+        description: When this disposition was created in Atlas, UTC.
+      - name: level_one
+        description: First level of the disposition hierarchy.
+      - name: level_two
+        description: Second level. Not always populated.
+      - name: level_three
+        description: Third level. Populated less often still.

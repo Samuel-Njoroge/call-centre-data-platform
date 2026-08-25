@@ -2,20 +2,46 @@ version: 2
 
 models:
   - name: dim_agent
-    description: One row per agent (ameyo_user_id), deduplicated in staging.
+    description: '{{ doc("dim_agent") }}'
     columns:
       - name: ameyo_user_id
+        description: The agent's Ameyo user_id. Natural key.
         tests:
           - unique
           - not_null
+      - name: atlas_user_name
+        description: The agent's identity in Atlas.
+      - name: team
+        description: The team the agent sits in.
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria.
 
   - name: fct_coding_rate
-    description: >
-      Metric 1. One row per (call_date, market, campaign, agent) -- call_date
-      is LOCAL calendar date. coding_rate = coded_calls / total_calls for
-      that combination.
+    description: '{{ doc("fct_coding_rate") }}'
     columns:
+      - name: coding_rate_id
+        description: Surrogate key on (call_date, market, campaign_name, ameyo_user_id).
+        tests:
+          - unique
+          - not_null
+      - name: call_date
+        description: LOCAL calendar date the calls were placed.
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria.
+      - name: campaign_name
+        description: The campaign the calls belong to.
+      - name: ameyo_user_id
+        description: The Ameyo login of the agent.
+      - name: atlas_user_name
+        description: The agent's identity in Atlas, joined from dim_agent. Null if the agent has no mapping row.
+      - name: team
+        description: The team the agent sits in, joined from dim_agent. Null if the agent has no mapping row.
+      - name: total_calls
+        description: Count of Ameyo call legs for this (call_date, market, campaign_name, ameyo_user_id) combination.
+      - name: coded_calls
+        description: Of total_calls, how many were successfully coded (linked to an Atlas disposition).
       - name: coding_rate
+        description: coded_calls / total_calls for this combination — Metric 1.
         tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -24,31 +50,68 @@ models:
                 inclusive: true
 
   - name: fct_paid_post_call
-    description: >
-      Metric 2. One row per assessable disposition (call_log_id). Null-
-      contract_id dispositions are excluded upstream, not counted as unpaid.
-      is_window_closed = false means the 3-day attribution window hasn't
-      elapsed yet as of the last refresh -- is_paid_post_call is provisional
-      for those rows, not a settled answer.
+    description: '{{ doc("fct_paid_post_call") }}'
     columns:
       - name: call_log_id
+        description: The disposition this row is about. Grain of this mart.
         tests:
           - unique
           - not_null
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria.
+      - name: contract_id
+        description: The contract this disposition relates to.
+      - name: disposed_at_utc
+        description: When this disposition was created in Atlas, UTC.
+      - name: window_closes_at_utc
+        description: disposed_at_utc + 3 days -- when this call's attribution window fully closes.
+      - name: is_window_closed
+        description: >
+          False if this call's 3-day attribution window hasn't elapsed yet
+          as of this run -- is_paid_post_call is provisional for these
+          rows, not a settled answer. See this model's description.
+      - name: is_paid_post_call
+        description: True if any payment was attributed to this call -- Metric 2's numerator, per row.
+      - name: attributed_payment_count
+        description: How many payments were attributed to this call (can be more than one -- see this model's description).
 
   - name: fct_inbound_call_drivers
-    description: >
-      Metric 4. One row per (call_date, market, level_one, level_two,
-      level_three) with a call count, for drill-down starting at level_one.
-      Population is call_type = 'Inbound Team' only.
+    description: '{{ doc("fct_inbound_call_drivers") }}'
+    columns:
+      - name: driver_id
+        description: Surrogate key on (call_date, market, level_one, level_two, level_three).
+        tests:
+          - unique
+          - not_null
+      - name: call_date
+        description: UTC disposition date.
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria.
+      - name: level_one
+        description: First level of the disposition hierarchy -- the top of the drill-down.
+      - name: level_two
+        description: Second level. Not always populated upstream.
+      - name: level_three
+        description: Third level. Populated less often still.
+      - name: call_count
+        description: Count of inbound dispositions for this (call_date, market, level_one, level_two, level_three) combination -- Metric 4.
 
   - name: fct_value_recovered_usd
-    description: >
-      Metric 3. One row per (call_date, market) -- call_date is the payment
-      date. Converted using the most recently fetched FX rate, not the true
-      historical rate on the payment's date (see model file for why).
+    description: '{{ doc("fct_value_recovered_usd") }}'
     columns:
+      - name: value_recovered_id
+        description: Surrogate key on (call_date, market).
+        tests:
+          - unique
+          - not_null
+      - name: call_date
+        description: PAYMENT date (UTC) -- not the call date. See this model's description.
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria.
+      - name: fx_rate_date_used
+        description: Which stg_fx__rates.rate_date was used for the conversion -- see this model's description for why it's not the payment's own date.
       - name: value_recovered_usd
+        description: Total attributed payment value for this (call_date, market), converted to USD -- Metric 3.
         tests:
           - not_null  # a null here means a payment's currency had no matching
                        # fx_rates row -- silently dropping it would understate
