@@ -10,7 +10,7 @@ Covers the following sections:
 
 For how to run the pipeline and what you should see, check [README](../README.md). 
 
-For the detailed production (Redshift/S3/Airbyte) setup, check [PROD DOCS](PROD.md).
+For the detailed production (Redshift/S3/Airbyte) setup, check [PROD](PROD.md).
 
 ## 1. Answers
 
@@ -23,7 +23,7 @@ data, 2026-08-05; payments span 2026-08-04 to 2026-08-07). All four are reproduc
 Over half the shortfall is calls that were never coded at all (53% blank `udh_notes`), not agents pasting a wrong `id`.
 `fct_coding_rate` breaks this down by day, market, campaign, and agent for coaching.
 
-**Metric 2 -Paid post call: 12.88%** (5,901 / 45,814 assessable dispositions; 6,318 dispositions with no `contract_id` are excluded as not-assessable, not counted as failures). `is_window_closed` on `fct_paid_post_call` flags whether a given row's 3-day attribution window has actually elapsed -this matters once the pipeline is running daily rather than against a single closed day (see [How handled](#4-how-handled)).
+**Metric 2 -Paid post call: 12.88%** (5,901 / 45,814 assessable dispositions; 6,318 dispositions with no `contract_id` are excluded as not-assessable, not counted as failures). `is_window_closed` on `fct_paid_post_call` flags whether a given row's 3-day attribution window has actually elapsed -this matters once the pipeline is running daily rather than against a single closed day (see [HOW HANDLED](#4-how-handled)).
 
 **Metric 3 -Value recovered:**  $14,007.04 USD across the sample, using the payment-attribution rule below. 
 
@@ -33,17 +33,14 @@ By market:
 - Tanzania $2,969.64
 - Uganda $1,541.47
 
-(see `fct_value_recovered_usd` for the day-level breakdown). Converted using the most recently fetched FX rate, not true historical per-date rates -see [Recommendations](#5-recommendations).
+(see `fct_value_recovered_usd` for the day-level breakdown). Converted using the most recently fetched FX rate, not true historical per-date rates -see [RECOMMENDATIONS](#5-recommendations).
 
 **Metric 4 -Top inbound drivers** (7,679 inbound dispositions, `call_type = 'Inbound Team'` only): 
 
-Enquiry (3,851)
-
-Service Request (1,616)
-
-Complaints (1,296)
-
-Customer Feedback (916), plus smaller categories. 
+- Enquiry (3,851)
+- Service Request (1,616)
+- Complaints (1,296)
+- Customer Feedback (916)
 
 `fct_inbound_call_drivers` carries the full level_two/level_three breakdown for
 drill-down starting at level_one.
@@ -59,8 +56,8 @@ Quantified findings from the raw extracts, tied to where each was found.
   dispositions extract -15 are non-numeric, and ~238 numeric-looking notes don't match anything
   in this single-day extract (typos, mis-pastes, or dispositions logged after this extract's
   cutoff).
-- **28 duplicate `ameyo_user_id` values in the Atlas↔Ameyo agent mapping file.** 14 are exact
-  duplicate rows; the other 14 genuinely conflict (mostly cosmetic -email formatting, spacing —
+- **28 duplicate `ameyo_user_id` values in the Atlas↔Ameyo agent mapping file.** 16 are exact
+  duplicate rows; the other 12 genuinely conflict (mostly cosmetic -email formatting, spacing —
   but 4 disagree on `team` itself). The file carries no timestamp, so there's no principled way to
   tell which row is current.
 - **2 payments with `amount <= 0`.**
@@ -83,14 +80,9 @@ Quantified findings from the raw extracts, tied to where each was found.
 **Payment attribution (Metrics 2 & 3): each payment attributes to exactly one call.** 41% of
 contracts with any payment have more than one (220,464 of 532,729), and a contract can have up to
 11 dispositions in this sample -a naive "does any payment exist within 3 days" join would let one
-payment satisfy multiple calls, double-counting its value in Metric 3. Instead, a payment attributes
-to the nearest *preceding* disposition on the same `contract_id`, among dispositions whose window
-`[disposed_at_utc, disposed_at_utc + 3 days]` contains the payment's timestamp. A single call can
-still end up attributed to more than one payment (legitimate -both genuinely followed only that
-call); a single payment is never attributed to more than one call. Ties (the 420 same-timestamp
-combinations above) are broken deterministically by `call_log_id DESC`, so reruns against unchanged
-data always pick the same winner. Payments with `amount <= 0` are excluded from attribution
-entirely.
+payment satisfy multiple calls, double-counting its value in Metric 3. 
+
+Instead, a payment attributes to the nearest *preceding* disposition on the same `contract_id`, among dispositions whose window `[disposed_at_utc, disposed_at_utc + 3 days]` contains the payment's timestamp. A single call can still end up attributed to more than one payment (legitimate -both genuinely followed only that call); a single payment is never attributed to more than one call. Ties (the 420 same-timestamp combinations above) are broken deterministically by `call_log_id DESC`, so reruns against unchanged data always pick the same winner. Payments with `amount <= 0` are excluded from attribution entirely.
 
 - Metric 2 (rate) = share of dispositions that are the attributed call for at least one payment.
 - Metric 3 (value) = sum of attributed payment amounts (converted to USD).
@@ -100,13 +92,11 @@ entirely.
 functions per the brief's own background (Onboarding/Upsell are outbound by definition; Voice of
 Customer is an outbound satisfaction survey). `Phone Call` (59% of all dispositions) has no
 directionality signal at all. Classifying only `Inbound Team` as inbound is conservative and likely
-undercounts true inbound volume -see Recommendations -but avoids guessing at a field that wasn't
-designed to answer this question.
+undercounts true inbound volume.
 
 **`payment_request_provider`'s non-provider values (`MANUAL`, `UNKNOWN`, `LOYALTY_DISCOUNT`) are
 left in the attribution population by default.** They carry a real `amount` and there's no
-grounding in the data alone to assume they aren't cash recovered -flagged here as a business
-question, not silently guessed at either way (see Recommendations).
+grounding in the data alone to assume they aren't cash recovered.
 
 ## 4. How handled
 
