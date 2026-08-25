@@ -28,6 +28,7 @@ Linux/Mac, tools/abctl.exe on Windows -- see PLAN.md for why two names).
 """
 
 import argparse
+import os
 import platform
 import stat
 import subprocess
@@ -89,6 +90,27 @@ def ensure_abctl() -> Path:
     return binary
 
 
+def _docker_compose_env() -> dict:
+    """Env for `docker compose` calls that may create/recreate the dagster
+    container -- sets DOCKER_UID/DOCKER_GID so it runs as the host user, not
+    root (see docker-compose.yml's dagster.user comment for why root writes
+    into the bind mount lock the host user out permanently, even across
+    pause/stop/destroy). Only applies to `up`, since `user:` is fixed at
+    container creation time -- `docker compose start` on an already-created
+    container ignores it either way, but setting it costs nothing.
+
+    POSIX only (os.getuid/getgid don't exist on Windows) -- on Windows,
+    Docker Desktop's bind-mount ownership model doesn't have this same
+    native-Linux-Docker problem, so falling back to the compose file's
+    default (root) there matches today's existing behavior, not a regression.
+    """
+    env = os.environ.copy()
+    if hasattr(os, "getuid"):
+        env["DOCKER_UID"] = str(os.getuid())
+        env["DOCKER_GID"] = str(os.getgid())
+    return env
+
+
 def ensure_docker() -> None:
     try:
         subprocess.run(
@@ -116,7 +138,10 @@ def cmd_up(args: argparse.Namespace) -> None:
 
     print("\n=== Dagster + Superset (docker compose up) ===")
     subprocess.run(
-        ["docker", "compose", "up", "-d", "--build"], check=True, cwd=REPO_ROOT
+        ["docker", "compose", "up", "-d", "--build"],
+        check=True,
+        cwd=REPO_ROOT,
+        env=_docker_compose_env(),
     )
 
     print(
@@ -206,7 +231,12 @@ def cmd_resume(_args: argparse.Namespace) -> None:
         print("Airbyte not installed -- run `python run.py up` first.")
 
     print("\n=== Resuming Dagster + Superset (docker compose start) ===")
-    subprocess.run(["docker", "compose", "start"], check=True, cwd=REPO_ROOT)
+    subprocess.run(
+        ["docker", "compose", "start"],
+        check=True,
+        cwd=REPO_ROOT,
+        env=_docker_compose_env(),
+    )
 
     print(
         "\nEverything resumed:\n"
