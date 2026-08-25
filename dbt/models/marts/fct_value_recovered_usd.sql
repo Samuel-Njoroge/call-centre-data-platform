@@ -1,26 +1,9 @@
--- Metric 3. One row per (call_date, market) with the total attributed
--- payment value converted to USD -- call_date here is the PAYMENT date
--- (when the money was actually recovered), not the call date, since that's
--- the natural date to report "value recovered on this day" against.
---
--- FX rate used: the MOST RECENTLY FETCHED rate for that currency, not the
--- true historical rate on the payment's date. exchangerate-api.com's free
--- tier only exposes current rates, and our own rate history only starts
--- accumulating from whenever this pipeline first ran -- so for this sample
--- (payments span 2026-08-04 to 2026-08-07, a single fetched rate dated
--- 2026-08-17) every conversion uses that one rate as an approximation. This
--- is a real limitation, not a rounding detail: going forward, once daily
--- fetches have accumulated a rate history, this should switch to matching
--- each payment to the rate fetched on (or nearest to) its own date rather
--- than always using the latest.
---
--- Incremental with the same 4-day lookback as int_calls_payment_attribution,
--- filtered on pay_timestamp_utc (the date this mart's grain is built on).
-
+-- See this model's description (dbt docs) for the full rationale.
 {{ config(
     materialized='incremental',
     unique_key='value_recovered_id',
-    incremental_strategy='delete+insert'
+    incremental_strategy='delete+insert',
+    sort=['call_date']
 ) }}
 
 with payments_to_convert as (

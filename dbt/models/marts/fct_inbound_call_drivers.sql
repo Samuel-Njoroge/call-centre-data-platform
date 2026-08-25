@@ -1,19 +1,9 @@
--- Metric 4. One row per (call_date, market, level_one, level_two, level_three)
--- combination with a call count -- built for a BI tool to start at level_one
--- and drill down, per the brief. call_date is the UTC disposition date
--- (Atlas has no local-time field to use instead, unlike Ameyo).
---
--- "Inbound" population is call_type = 'Inbound Team' only -- see
--- docs/WRITEUP.md for why the broader, ambiguous call_type values were left
--- out rather than guessed at.
---
--- Incremental, reprocessing the last 4 days of call_date -- same short-lag
--- rationale as fct_coding_rate, not a moving-window metric like Metric 2.
-
+-- See this model's description (dbt docs) for the full rationale.
 {{ config(
     materialized='incremental',
     unique_key='driver_id',
-    incremental_strategy='delete+insert'
+    incremental_strategy='delete+insert',
+    sort=['call_date']
 ) }}
 
 with aggregated as (

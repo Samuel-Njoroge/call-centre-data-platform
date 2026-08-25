@@ -153,11 +153,12 @@ python ingestion/s3_upload/upload_to_s3.py       # lands data/raw/ in S3
 docker compose up --build                        # Dagster + Superset
 ```
 
-Open `http://localhost:3000`, launch `callhouse_pipeline` -- in the Launchpad's run config, set
-`resources.target_resource.config.target` to `redshift` (defaults to `local`). `load_raw_data` then
-uploads to S3 and triggers/polls the Airbyte sync instead of loading DuckDB directly; `load_fx_rates`
-and `run_dbt_build` are unchanged from the local path, just pointed at Redshift. The daily 06:00
-schedule (`callhouse_daily_schedule`) always runs against `redshift`, regardless of what a manual
+- Open `http://localhost:3000`, launch `callhouse_pipeline` -- in the Launchpad's run config
+- Set `resources.target_resource.config.target` to `redshift` (defaults to `local`). 
+
+  - `load_raw_data` then uploads to S3 and triggers/polls the Airbyte sync instead of loading DuckDB directly
+  - `load_fx_rates` and `run_dbt_build` are unchanged from the local path, just pointed at Redshift. 
+- The daily `06:00` schedule (`callhouse_daily_schedule`) always runs against `redshift`, regardless of what a manual
 Launchpad run picks.
 
 ![Dagster job graph](images/dagster-job.png)

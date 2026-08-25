@@ -5,6 +5,8 @@ A production-shaped analytics pipeline for d.light's call centre.
 Answers four measurement questions from two disconnected source systems (Ameyo, Atlas), re-runnable every morning against a new day of data, from ingestion through dashboards.
 
 - **This README** covers what was built and how to run it end to end.
+- **[PIPELINE WALKTHROUGH](docs/PIPELINE.md)** explains what happens at every stage, start to
+finish, assuming no prior familiarity with this repo - read this first if you're new here.
 - **[WRITEUP DOCS](docs/WRITEUP.md)** is the case-study write-up - answers, data gaps(Please Click the link)
 assumptions, how each gap was handled, recommendations.
 - **[PROD DOCS](docs/PROD.md)** is the detailed, screenshot-illustrated production setup
@@ -44,8 +46,7 @@ Full reasoning, data-gap findings, and assumptions behind each of these numbers 
 
 ## 2. System design overview
 
-![system](docs/images/system-arch.png)
-
+![local prod](docs/images/local-prod-system-arch.png)
 
 
 **Tools, and why each one:**
@@ -142,13 +143,24 @@ Every Redshift user/grant, with the reasoning for each, is in [`infra/redshift.s
 
 One dbt project (`dbt/`), layered so the shape is the same on either warehouse:
 
-- **staging** - light typing/renaming, views, one model per raw source.
+- **staging** - light typing/renaming, one model per raw source. `table` for the three models feeding
+  the payment-attribution range join below (with a Redshift distkey/sortkey to match), `view` for the
+  two dimension-scale ones (agent mapping, fx rates) that never grow large enough to need it.
 - **intermediate** - the payment-attribution logic: each payment attributes to exactly one call
   (the nearest preceding disposition on the same contract, within a 3-day window) - needed because
   41% of paying contracts pay more than once, and a naive join would double-count value.
   `incremental`, 4-day lookback.
 - **marts** - the four fact tables answering the four questions, plus `dim_agent`. `incremental`
   except `dim_agent` (a small full snapshot).
+
+**Docs.** Every model, source and column is documented (`dbt/models/**/*.yml`, with the longer "why"
+explanations in `dbt/models/**/*_docs.md` doc blocks, not inline SQL comments) - browsable, searchable,
+with a full lineage graph:
+
+```bash
+dbt docs generate --project-dir dbt --profiles-dir dbt --target local
+dbt docs serve --project-dir dbt --profiles-dir dbt --target local
+```
 
 **The daily-refresh moving-window problem**
 
@@ -394,6 +406,7 @@ dbt/                      The `callhouse` dbt project -- staging -> intermediate
 dagster_project/          Orchestration: load -> fetch FX -> dbt build, both targets
 superset/                 Containerized Superset, both warehouses pre-configured
 infra/redshift.sql        Every Redshift user/grant, with the "why" for each
+docs/PIPELINE.md          What happens at every pipeline stage, end to end
 docs/WRITEUP.md           The five-point case study write-up (answers, gaps, assumptions,
                           how handled, recommendations)
 docs/PROD.md              Detailed, step-by-step production setup, with screenshots

@@ -1,0 +1,26 @@
+version: 2
+
+macros:
+  - name: lineage_columns
+    description: >
+      Normalizes the two raw-loading paths' different lineage column names
+      to a single staging-level shape (_source_file, _loaded_at), so
+      downstream layers don't need to know which path landed a given row.
+      local_loader names its lineage columns _source_file/_loaded_at, but
+      Airbyte's file-based source always adds its own
+      (_ab_source_file_url/_airbyte_extracted_at).
+
+  - name: regexp_replace_global
+    description: >
+      Cross-engine regexp_replace: DuckDB/Postgres need an explicit 'g'
+      flag (4th arg) to replace every match; Redshift's regexp_replace
+      takes position/occurrence as positional integers in that same slot
+      instead, and already replaces every occurrence by default -- passing
+      'g' there fails with "invalid input syntax for integer: 'g'".
+
+  - name: generate_schema_name
+    description: >
+      dbt's standard custom-schema override: uses the custom schema name
+      as-is (e.g. staging, intermediate, marts) instead of the default
+      `<target_schema>_<custom_schema>` concatenation, so model schemas
+      stay exactly as configured in dbt_project.yml regardless of target.

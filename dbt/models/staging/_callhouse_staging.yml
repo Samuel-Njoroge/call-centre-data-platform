@@ -1,0 +1,134 @@
+version: 2
+
+models:
+  - name: stg_ameyo__calls
+    description: '{{ doc("stg_ameyo__calls") }}'
+    columns:
+      - name: call_id
+        description: Natural key. Unique per call leg.
+        tests:
+          - unique
+          - not_null
+      - name: called_at_local
+        description: >
+          When the call was placed, LOCAL time of the contact centre
+          country. Deliberately not converted to UTC in staging — see this
+          model's description.
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria, decoded from ch_contact_center_id.
+      - name: system_disposition
+        description: >
+          The telephony system's own outcome for the call leg (e.g.
+          CONNECTED) — the switch's view, not the agent's, and not the same
+          thing as an Atlas disposition.
+      - name: call_type
+        description: How the call was placed — outbound.manual.dial, outbound.auto.dial, click.to.call.dial.
+      - name: talk_time_ms
+        description: Talk duration in milliseconds.
+      - name: ameyo_user_id
+        description: The Ameyo login of the agent who made the call. Joins to stg_atlas__agent_mapping.
+      - name: campaign_name
+        description: The campaign the call belongs to.
+      - name: call_notes_raw
+        description: >
+          Free-text notes field, trimmed and blank-nulled. Agents are
+          supposed to paste the Atlas call_log_id here after disposing the
+          call — see int_calls_coded for how that link is parsed and
+          validated.
+      - name: _source_file
+        description: >
+          Which raw file/object this row was loaded from — normalized to a
+          single name across the local_loader and Airbyte ingestion paths
+          (see the lineage_columns macro).
+      - name: _loaded_at
+        description: When this row was loaded into the warehouse.
+
+  - name: stg_atlas__dispositions
+    description: '{{ doc("stg_atlas__dispositions") }}'
+    columns:
+      - name: call_log_id
+        description: Primary key. The id agents are supposed to paste into Ameyo notes.
+        tests:
+          - unique
+          - not_null
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria, decoded from tenant_id.
+      - name: customer_id
+        description: The customer. One customer may hold several contracts.
+      - name: contract_id
+        description: >
+          The contract the call relates to — the grain at which payments
+          are recorded. Null on 12.1% of rows in this sample.
+      - name: disposed_at_utc
+        description: When the disposition was created in Atlas, UTC. Cast explicitly — see this model's description.
+      - name: disposed_by
+        description: The Atlas user who logged the disposition.
+      - name: call_type
+        description: >
+          The team or channel handling the call — not a direction flag.
+          Phone Call (59% of rows) carries no directionality signal; see
+          int_dispositions_hierarchy's docs and docs/WRITEUP.md.
+      - name: level_one
+        description: First level of the disposition hierarchy.
+      - name: level_two
+        description: Second level. Not always populated.
+      - name: level_three
+        description: Third level. Populated less often still.
+      - name: _source_file
+        description: Which raw file/object this row was loaded from.
+      - name: _loaded_at
+        description: When this row was loaded into the warehouse.
+
+  - name: stg_atlas__payments
+    description: '{{ doc("stg_atlas__payments") }}'
+    columns:
+      - name: pay_timestamp_utc
+        description: When the payment was recorded, UTC.
+      - name: market
+        description: Kenya, Uganda, Tanzania or Nigeria, decoded from tenant_id.
+      - name: currency
+        description: KES, UGX, TZS or NGN, decoded from tenant_id.
+      - name: tenant_id
+        description: Market, same coding as stg_atlas__dispositions.market's source column.
+      - name: contract_id
+        description: The contract the payment was made against.
+      - name: payment_request_provider
+        description: >
+          The mobile money or payment provider, whitespace-trimmed. Also
+          contains 514 non-provider values (MANUAL, UNKNOWN,
+          LOYALTY_DISCOUNT) — left in deliberately, see this model's
+          description.
+      - name: create_program
+        description: The internal service that ingested the payment.
+      - name: amount_local
+        description: >
+          Payment amount in the LOCAL currency of the market. Cast to
+          double precision explicitly — see this model's description.
+      - name: _source_file
+        description: Which raw file/object this row was loaded from.
+      - name: _loaded_at
+        description: When this row was loaded into the warehouse.
+
+  - name: stg_atlas__agent_mapping
+    description: '{{ doc("stg_atlas__agent_mapping") }}'
+    columns:
+      - name: market
+        description: Country name (Kenya, Uganda, Tanzania, Nigeria), from contact_centre.
+      - name: ameyo_user_id
+        description: The agent's Ameyo user_id. Deduplicated — see this model's description.
+      - name: team
+        description: The team the agent sits in.
+      - name: atlas_user_name
+        description: The agent's identity in Atlas.
+
+  - name: stg_fx__rates
+    description: '{{ doc("stg_fx__rates") }}'
+    columns:
+      - name: rate_date
+        description: The date this rate was fetched for.
+      - name: currency
+        description: KES, UGX, TZS or NGN.
+      - name: local_units_per_usd
+        description: How many units of this currency equal 1 USD.
+      - name: fetched_at
+        description: When this row was actually fetched from the exchange rate API (UTC).

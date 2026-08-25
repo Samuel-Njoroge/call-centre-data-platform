@@ -1,12 +1,9 @@
--- One row per call disposed of in Atlas against a customer contract. call_log_id
--- is the primary key -- this is the id agents are supposed to paste into Ameyo.
---
--- created_timestamp_utc is cast explicitly: Airbyte's raw columns are all
--- varchar (no schema inference configured), unlike local_loader's DuckDB
--- output. Confirmed necessary by a real error -- int_calls_payment_attribution
--- COALESCEs max(disposed_at_utc) against a typed timestamp literal, which
--- Redshift refuses to do across varchar/timestamp even though plain
--- comparisons tolerate the implicit cast fine.
+-- See this model's description (dbt docs) for the full rationale.
+{{ config(
+    materialized='table',
+    dist='contract_id',
+    sort=['disposed_at_utc']
+) }}
 
 select
     call_log_id,

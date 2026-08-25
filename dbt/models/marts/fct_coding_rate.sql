@@ -1,18 +1,9 @@
--- Metric 1. One row per (call_date, market, campaign, agent) -- the exact
--- breakdown the brief asks for, since the team wants this for coaching
--- individual agents. call_date is the LOCAL calendar date the call was
--- placed (not UTC -- coaching an agent on "yesterday's" calls should mean
--- their local yesterday).
---
--- Incremental, reprocessing the last 4 days of call_date on each run: coding
--- status isn't a "moving window" the way Metric 2 is, but Atlas dispositions
--- can still arrive with a short lag after the call, so a small buffer avoids
--- a call permanently freezing as "not coded" if its match lands a day late.
-
+-- See this model's description (dbt docs) for the full rationale.
 {{ config(
     materialized='incremental',
     unique_key='coding_rate_id',
-    incremental_strategy='delete+insert'
+    incremental_strategy='delete+insert',
+    sort=['call_date']
 ) }}
 
 with aggregated as (

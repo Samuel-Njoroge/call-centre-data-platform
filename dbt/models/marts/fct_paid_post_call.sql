@@ -1,25 +1,9 @@
--- Metric 2. One row per assessable disposition (call_log_id) -- dispositions
--- with a null contract_id are excluded upstream (see docs/WRITEUP.md), not
--- counted as unpaid.
---
--- is_window_closed is the moving-window handling the brief asks for (4.4):
--- false means the 3-day attribution window hasn't fully elapsed yet as of
--- this run, so is_paid_post_call is provisional, not a settled "no". A daily
--- refresh should treat is_window_closed = false rows as "too early to call"
--- in reporting, not blend them into a rate that looks final.
---
--- int_calls_payment_attribution is at (call x attributed payment) grain --
--- grouped back to one row per call here so Metric 2's rate isn't inflated by
--- calls that happen to have more than one attributed payment.
---
--- Incremental with the same 4-day lookback as its source
--- (int_calls_payment_attribution) so this mart stays in sync with whatever
--- that model just reprocessed, rather than reading a stale slice of it.
-
+-- See this model's description (dbt docs) for the full rationale.
 {{ config(
     materialized='incremental',
     unique_key='call_log_id',
-    incremental_strategy='delete+insert'
+    incremental_strategy='delete+insert',
+    sort=['disposed_at_utc']
 ) }}
 
 select

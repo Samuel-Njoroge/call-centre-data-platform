@@ -3,8 +3,7 @@
     replace every match; Redshift's regexp_replace takes position/occurrence
     as positional integers in that same slot instead, and already replaces
     every occurrence by default with no flag needed -- passing 'g' there
-    fails with "invalid input syntax for integer: 'g'" (confirmed by actually
-    running this against Redshift, not by reading the docs).
+    fails with "invalid input syntax for integer: 'g'".
 #}
 {% macro regexp_replace_global(string_expr, pattern, replacement) -%}
     {%- if target.name == 'local' -%}
