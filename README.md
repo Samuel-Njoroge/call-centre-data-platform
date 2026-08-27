@@ -5,14 +5,13 @@ A production-shaped analytics pipeline for d.light's call centre.
 Answers four measurement questions from two disconnected source systems (Ameyo, Atlas), re-runnable every morning against a new day of data, from ingestion through dashboards.
 
 - **This README** covers what was built and how to run it end to end.
-- **[PIPELINE WALKTHROUGH](docs/PIPELINE.md)** explains what happens at every stage, start to
+- **[PIPELINE DOCS](docs/PIPELINE.md)** explains what happens at every stage, start to
 finish, assuming no prior familiarity with this repo - read this first if you're new here.
 - **[WRITEUP DOCS](docs/WRITEUP.md)** is the case-study write-up - answers, data gaps(Please Click the link)
 assumptions, how each gap was handled, recommendations.
 - **[PROD DOCS](docs/PROD.md)** is the detailed, screenshot-illustrated production setup
 (Redshift, S3, IAM, Airbyte).
 
----
 
 ## 1. Problem statement 
 
@@ -42,7 +41,6 @@ and the agent is expected to paste that id back into Ameyo's notes field by hand
 
 Full reasoning, data-gap findings, and assumptions behind each of these numbers check: [WRITEUP](docs/WRITEUP.md).
 
----
 
 ## 2. System design overview
 
@@ -72,7 +70,6 @@ raw (DuckDB file, or S3 --> Airbyte --> Redshift)
   --> Superset (queries either warehouse)
 ```
 
----
 
 ## 3. Data sources & ingestion
 
@@ -85,19 +82,19 @@ Four CSV extracts, one day at a time, dropped into `data/raw/{date}/`:
 | `atlas_payments.csv` | Customer payments, local currency |
 | `atlas_ameyo_mapping.csv` | The only bridge between the two systems' agent identities |
 
-**Local target** 
+**a) Local target** 
 
 - `ingestion/local_loader/load_raw.py` reads the CSVs directly into a DuckDB `raw` schema. 
 - Drops and rebuilds every raw table on every run (delete the tables, run one command, get them back and a new date folder is picked up automatically, no code change.
 
-**Production target**
+**b) Production target**
 
 - `ingestion/s3_upload/upload_to_s3.py` uploads the same files to S3; Airbyte's S3 source connector reads them (`incremental` sync mode) and writes to Redshift's `raw`
 schema (`append` destination mode). 
 
 Full setup: [PROD DOCS](docs/PROD.md).
 
-**External FX-rate integration** - Metric 3 needs USD, and there's no rate in the source data, so
+**c) External FX-rate integration** - Metric 3 needs USD, and there's no rate in the source data, so
 `ingestion/fx_rates/fetch_fx.py` calls [exchangerate-api.com](https://www.exchangerate-api.com/) once
 per run and inserts the fetched rates into `raw.fx_rates` - a normal dbt source table, joined against
 `atlas_payments` in staging to convert every payment to USD. 
@@ -123,7 +120,6 @@ Re-running the production sync a second time with no new source data reports `0 
 
 ![Idempotent reload](docs/images/airbyte-load-idempotency.png)
 
----
 
 ## 4. Storage
 
@@ -137,7 +133,6 @@ Every Redshift user/grant, with the reasoning for each, is in [`infra/redshift.s
 
 ![Redshift marts, populated](docs/images/redshift-dbt-tables2.png)
 
----
 
 ## 5. Transformation
 
@@ -153,12 +148,11 @@ One dbt project (`dbt/`), layered so the shape is the same on either warehouse:
 - **marts** - the four fact tables answering the four questions, plus `dim_agent`. `incremental`
   except `dim_agent` (a small full snapshot).
 
-**Docs.** Every model, source and column is documented (`dbt/models/**/*.yml`, with the longer "why"
-explanations in `dbt/models/**/*_docs.md` doc blocks, not inline SQL comments) - browsable, searchable,
-with a full lineage graph:
+**dbt documentation.**
 
 ```bash
 dbt docs generate --project-dir dbt --profiles-dir dbt --target local
+
 dbt docs serve --project-dir dbt --profiles-dir dbt --target local
 ```
 
@@ -193,7 +187,6 @@ Full assumptions and the reasoning behind every modelling decision: [WRITEUP DOC
 
 ![](./docs/images/fct-paid-post-calls.png)
 
----
 
 ## 6. Visualization
 
@@ -211,7 +204,6 @@ rebuild it by hand.
 
 ![Call centre dashboard](docs/images/superset-cc-summary-dashboard.png)
 
----
 
 ## 7. Orchestration
 
@@ -223,7 +215,6 @@ for either target, natively or in Docker.
 Every step was individually verified idempotent by actually re-running it: re-running the job
 against unchanged data reports 0 new rows loaded and every downstream metric unchanged.
 
----
 
 ## 8. How to run
 
@@ -234,20 +225,18 @@ against unchanged data reports 0 new rows loaded and every downstream metric unc
 ```bash
 # 1. Set up the venv (from the repo root)
 python -m venv venv
+
 source venv/bin/activate        # Windows: venv\Scripts\activate
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
 # 3. Get a free exchange-rate API key from https://www.exchangerate-api.com/,
-#    copy the env template, and fill it in
 cp .env.example .env            # Windows: copy .env.example .env
-#    edit .env: set EXCHANGERATE_API_KEY=<your key> (nothing else is needed for this path)
 
 # 4. Start Dagster (DAGSTER_HOME set so the CLI and the UI share the same run
-#    history -- without it, `dagster job launch` from another terminal fails
-#    with DagsterHomeNotSetError even while `dagster dev` itself runs fine)
 export DAGSTER_HOME="$(pwd)/dagster_project/.dagster_home"     # Windows (PowerShell): $env:DAGSTER_HOME="$PWD\dagster_project\.dagster_home"
+
 dagster dev -f dagster_project/callhouse_dagster/definitions.py
 ```
 
@@ -274,15 +263,19 @@ dagster dev -f dagster_project/callhouse_dagster/definitions.py
 **Running the three steps directly** (no Dagster, useful for understanding what's happening):
 ```bash
 python ingestion/local_loader/load_raw.py
+
 python ingestion/fx_rates/fetch_fx.py --target local
+
 dbt build --project-dir dbt --profiles-dir dbt --target local
 ```
 
 **Running the tests:**
 ```bash
 pytest ingestion/fx_rates/test_fetch_fx.py -v   # 8 unit tests, no network, no credentials
+
 dbt test --project-dir dbt --profiles-dir dbt --target local   # schema + singular tests
 ```
+
 **What you should see:** all 8 FX unit tests pass, no network calls. `dbt build --target local`
 finishes 23/23 (models + tests).
 
@@ -297,6 +290,7 @@ Leave every `REDSHIFT_*`/`AIRBYTE_*`/`AWS_*`value blank - harmless for local-onl
 ```bash
 docker compose up superset --build
 ```
+
 Open **http://localhost:8088**, log in with `admin` / your `SUPERSET_ADMIN_PASSWORD` - the
 **Local (DuckDB)** connection is already configured and queryable.
 
@@ -312,11 +306,11 @@ Open **http://localhost:8088**, log in with `admin` / your `SUPERSET_ADMIN_PASSW
 
 ```bash
 cp .env.example .env
-# fill in every value -- all of it is needed for this path
+
 ./tools/abctl local install --low-resource-mode         # 1. install Airbyte, http://localhost:8000
-#   configure the S3 source + Redshift destination connectors + connection here --
-#   full walkthrough with screenshots: docs/PROD.md
+
 python ingestion/s3_upload/upload_to_s3.py               # 2. land data/raw/ in S3
+
 docker compose up --build                                 # 3. Dagster + Superset
 ```
 
@@ -337,7 +331,15 @@ one idempotent command:
 
 ```bash
 python run.py up        # install/start everything
+
 python run.py down      # stop containers, keep the Airbyte cluster + Superset's saved dashboards
+
+python run.py pause     # freeze all runninng services (Airbyte cluster, Superset, Dagster)
+
+python run.py resume    # bring a paused environment back. skips abctl's install/validation checks
+
+python run.py status    # show what's currently running
+
 python run.py destroy   # tear down everything (asks for confirmation)
 ```
 
@@ -346,7 +348,6 @@ connection, Superset's dual-warehouse config - with screenshots of each):
 
 Check here: [PROD DOCS](docs/PROD.md).
 
----
 
 ## 9. Challenges
 
@@ -372,7 +373,6 @@ A handful of the more interesting ones - the full list of data gaps and how I ha
   as its cursor, so two idempotent components composed into a non-idempotent whole until the upload
   step got content-based (MD5) change detection.
 
----
 
 ## 10. New learnings
 
@@ -391,9 +391,8 @@ A handful of the more interesting ones - the full list of data gaps and how I ha
   can silently produce a different number than the warehouse actually computed - worth verifying a
   dashboard's numbers against the source of truth, not just trusting the chart.
 
----
 
-## Repository layout
+## 11. Repository layout
 
 ```
 data/raw/{date}/*.csv     The four CSV source extracts
