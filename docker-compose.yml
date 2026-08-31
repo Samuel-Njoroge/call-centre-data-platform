@@ -12,6 +12,8 @@ services:
     user: "${DOCKER_UID:-0}:${DOCKER_GID:-0}"
     environment:
       - HOME=/tmp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   superset:
     build:
