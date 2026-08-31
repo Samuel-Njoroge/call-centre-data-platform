@@ -3,9 +3,7 @@
 Full walkthrough for starting up the production path - Redshift, S3, IAM, Airbyte, Dagster,
 Superset - from a blank AWS account. 
 
-For the condensed quickstart see the README's [Production](../README.md#2-production-path) section. 
-
-For why the pipeline is designed this way, see [WRITEUP DOCS](WRITEUP.md).
+For the condensed quickstart see the README's [PRODUCTION](../README.md#2-production-path) section. 
 
 ## Prerequisites
 
