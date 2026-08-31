@@ -24,7 +24,7 @@ services: Airbyte (via abctl, a Kubernetes cluster) and Dagster + Superset
 Cross-platform (Linux/Mac/Windows) by construction: no shell=True subprocess
 calls, OS/arch detected via the stdlib `platform` module, and the abctl
 binary is fetched per-OS into tools/ if not already present (tools/abctl on
-Linux/Mac, tools/abctl.exe on Windows -- see PLAN.md for why two names).
+Linux/Mac, tools/abctl.exe on Windows
 """
 
 import argparse
@@ -91,18 +91,7 @@ def ensure_abctl() -> Path:
 
 
 def _docker_compose_env() -> dict:
-    """Env for `docker compose` calls that may create/recreate the dagster
-    container -- sets DOCKER_UID/DOCKER_GID so it runs as the host user, not
-    root (see docker-compose.yml's dagster.user comment for why root writes
-    into the bind mount lock the host user out permanently, even across
-    pause/stop/destroy). Only applies to `up`, since `user:` is fixed at
-    container creation time -- `docker compose start` on an already-created
-    container ignores it either way, but setting it costs nothing.
-
-    POSIX only (os.getuid/getgid don't exist on Windows) -- on Windows,
-    Docker Desktop's bind-mount ownership model doesn't have this same
-    native-Linux-Docker problem, so falling back to the compose file's
-    default (root) there matches today's existing behavior, not a regression.
+    """Sets DOCKER_UID/DOCKER_GID so it runs as the host user, not root 
     """
     env = os.environ.copy()
     if hasattr(os, "getuid"):
